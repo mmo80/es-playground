@@ -1,67 +1,90 @@
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Linq;
+using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-#pragma warning disable CS8618
+//using Microsoft.EntityFrameworkCore;
+using Weasel.Core;
+using Marten;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.DependencyInjection;
+using WebApi.Health;
+
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddDbContext<DbApiContext>
-    (options => options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("Database");
 
+// This is the absolute, simplest way to integrate Marten into your
+// .NET application with Marten's default configuration
+builder.Services.AddMarten(options =>
+{
+    // Establish the connection string to your Marten database
+    options.Connection(builder.Configuration.GetConnectionString("DefaultConnection")!);
+
+    // If we're running in development mode, let Marten just take care
+    // of all necessary schema building and patching behind the scenes
+    if (builder.Environment.IsDevelopment())
+    {
+        options.AutoCreateSchemaObjects = AutoCreate.All;
+    }
+}).OptimizeArtifactWorkflow();
 
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+app.MapHealthChecks("/_health", new HealthCheckOptions
+{
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+
 
 app.MapGet("/heartbeat", () => "Alive!");
 
 app.MapGet("/hello", (string name) => $"Hello {name}");
 
-app.MapGet("/users", async (DbApiContext db) => await db.Users.ToListAsync());
 
-app.MapGet("/users/{id}", async (Guid id, DbApiContext db) =>
-    await db.Users.FindAsync(id)
-        is { } user
-        ? Results.Ok(user)
-        : Results.NotFound());
+// You can inject the IDocumentStore and open sessions yourself
+app.MapPost("/users",
+    async ([FromServices] IDocumentStore store, UserModel create) =>
+    {
+        // Open a session for querying, loading, and updating documents
+        await using var session = store.LightweightSession();
 
-app.MapPost("/users", async (DbApiContext db, UserModel user) =>
-{
-    var u = new User { Id = Guid.NewGuid(), Username = user.Username };
+        var user = new UserMarten {
+            Username = create.Username
+        };
+        session.Store(user);
 
-    db.Users.Add(u);
-    await db.SaveChangesAsync();
+        await session.SaveChangesAsync();
+    });
 
-    return Results.Created($"/users/{u.Id}", u);
-});
+app.MapGet("/users", async ([FromServices] IDocumentStore store) =>
+    {
+        // Open a session for querying documents only
+        await using var session = store.QuerySession();
+
+        return await session.Query<UserMarten>()
+            .ToListAsync();
+    });
+
+// OR Inject the session directly to skip the management of the session lifetime
+app.MapGet("/user/{id:guid}",
+    async (Guid id, [FromServices] IQuerySession session, CancellationToken ct) =>
+    {
+        return await session.LoadAsync<UserMarten>(id, ct);
+    });
 
 app.Run();
 
 
+public class UserMarten
+{
+    public Guid Id { get; set; }
+    public required string Username { get; set; }
+}
 
 
 public record UserModel(string Username);
-
-[Table("users")]
-public class User
-{
-    [System.ComponentModel.DataAnnotations.Key]
-    [Column("id")]
-    public Guid Id { get; set; }
-
-    [Column("username")]
-    public string Username { get; set; }
-}
-
-
-public class DbApiContext : DbContext
-{
-    public DbApiContext(DbContextOptions options) : base(options)
-    { }
-
-    public DbSet<User> Users { get; set; }
-
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) {}
-}

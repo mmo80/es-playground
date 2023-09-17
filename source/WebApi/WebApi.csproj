@@ -9,6 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="7.1.0" />
+    <PackageReference Include="Marten" Version="6.2.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="7.0.11">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
