@@ -1,32 +1,31 @@
 ﻿using Marten;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using static System.Formats.Asn1.AsnWriter;
 
-namespace WebApi.Health
+namespace WebApi.Health;
+
+public class DatabaseHealthCheck : IHealthCheck
 {
-    public class DatabaseHealthCheck : IHealthCheck
+    private readonly IDocumentStore _store;
+
+    public DatabaseHealthCheck(IDocumentStore store)
     {
-        private readonly IDocumentStore _store;
+        _store = store;
+    }
 
-        public DatabaseHealthCheck(IDocumentStore store)
+    public async Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context, 
+        CancellationToken cancellationToken = new())
+    {
+        try
         {
-            _store = store;
+            await using var session = _store.QuerySession();
+            await session.QueryAsync<int>("select 1", cancellationToken);
+            return HealthCheckResult.Healthy();
         }
-
-        public async Task<HealthCheckResult> CheckHealthAsync(
-            HealthCheckContext context, 
-            CancellationToken cancellationToken = new())
+        catch (Exception e)
         {
-            try
-            {
-                await using var session = _store.QuerySession();
-                await session.QueryAsync<int>("select 1", cancellationToken);
-                return HealthCheckResult.Healthy();
-            }
-            catch (Exception e)
-            {
-                return HealthCheckResult.Unhealthy(exception: e);
-            }
+            return HealthCheckResult.Unhealthy(exception: e);
         }
     }
 }
+
