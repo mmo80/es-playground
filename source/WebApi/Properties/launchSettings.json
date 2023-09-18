@@ -3,7 +3,7 @@
     "http": {
       "commandName": "Project",
       "launchBrowser": true,
-      "launchUrl": "heartbeat",
+      "launchUrl": "alive",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
@@ -13,7 +13,7 @@
     "Docker": {
       "commandName": "Docker",
       "launchBrowser": true,
-      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}/heartbeat",
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}/alive",
       "environmentVariables": {
         "ASPNETCORE_URLS": "http://+:80"
       },

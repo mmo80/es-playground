@@ -1,6 +1,5 @@
 using HealthChecks.UI.Client;
 using Marten;
-using Marten.Events;
 using Marten.Events.Daemon.Resiliency;
 using Marten.Events.Projections;
 using Marten.Schema.Identity;
@@ -10,7 +9,6 @@ using Microsoft.AspNetCore.Mvc;
 using Weasel.Core;
 using WebApi.Event;
 using WebApi.Health;
-using static System.Formats.Asn1.AsnWriter;
 
 #pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
 
@@ -32,12 +30,12 @@ builder.Services.AddMarten(options =>
         serializerType: SerializerType.SystemTextJson
     );
 
-    // If we're running in development mode, let Marten just take care
-    // of all necessary schema building and patching behind the scenes
-    if (builder.Environment.IsDevelopment())
-    {
-        options.AutoCreateSchemaObjects = AutoCreate.All;
-    }
+    //// If we're running in development mode, let Marten just take care
+    //// of all necessary schema building and patching behind the scenes
+    //if (builder.Environment.IsDevelopment())
+    //{
+    //    options.AutoCreateSchemaObjects = AutoCreate.All;
+    //}
 
     options.AutoCreateSchemaObjects = AutoCreate.All;
 
@@ -57,10 +55,7 @@ app.MapHealthChecks("/_health", new HealthCheckOptions
 });
 
 
-app.MapGet("/heartbeat", () => "Alive!");
-
-app.MapGet("/hello", (string name) => $"Hello {name}");
-
+app.MapGet("/alive", () => "Alive!");
 
 // You can inject the IDocumentStore and open sessions yourself
 app.MapPost("/users",
@@ -94,7 +89,6 @@ app.MapGet("/users/{id:guid}",
     });
 
 
-
 app.MapPost("/order/create",
     async ([FromServices] IDocumentStore store, decimal total) =>
     {
@@ -103,56 +97,55 @@ app.MapPost("/order/create",
         var orderId = CombGuidIdGeneration.NewGuid();
         session.Events.StartStream<Order>(orderId, new OrderCreated(orderId, total, DateTimeOffset.Now));
         await session.SaveChangesAsync();
+
+        return Results.Created($"/order/{orderId}", orderId);
     });
 
-
-app.MapPost("/order/{orderId:guid}/paid",
+app.MapPost("/order/{orderId:guid}/complete-payment",
     async ([FromServices] IDocumentSession session, Guid orderId, int version) =>
     {
-        var aggregate = await session.Events.AggregateStreamAsync<Order>(orderId);
+        var aggregate = await session.Events.AggregateStreamAsync<Order>(orderId) 
+            ?? throw new InvalidOperationException("Order does not exist");
 
-        if (aggregate == null)
-            throw new InvalidOperationException("Order does not exist");
-
-        // TODO: add validation to aggregate!!
+        aggregate.CompletePayment();
 
         await session.Events.WriteToAggregate<Order>(orderId, version, stream =>
-            stream.AppendOne(new OrderPaid(orderId, DateTimeOffset.Now)));
+            stream.AppendMany(aggregate.GetUncommittedEvents()));
 
         await session.SaveChangesAsync();
     });
 
-
-app.MapPost("/order/{orderId:guid}/shipped",
+app.MapPost("/order/{orderId:guid}/ship",
     async ([FromServices] IDocumentSession session, Guid orderId, int version) =>
     {
-        var aggregate = await session.Events.AggregateStreamAsync<Order>(orderId);
+        var aggregate = await session.Events.AggregateStreamAsync<Order>(orderId) 
+            ?? throw new InvalidOperationException("Order does not exist");
 
-        if (aggregate == null)
-            throw new InvalidOperationException("Order does not exist");
-
-        // TODO: add validation to aggregate!!
+        aggregate.Ship();
 
         await session.Events.WriteToAggregate<Order>(orderId, version, stream =>
-            stream.AppendOne(new OrderShipped(orderId, DateTimeOffset.Now)));
+            stream.AppendMany(aggregate.GetUncommittedEvents()));
 
         await session.SaveChangesAsync();
     });
 
+app.MapPost("/order/{orderId:guid}/cancel",
+    async ([FromServices] IDocumentSession session, Guid orderId, int version) =>
+    {
+        var aggregate = await session.Events.AggregateStreamAsync<Order>(orderId) 
+            ?? throw new InvalidOperationException("Order does not exist");
 
-//app.MapGet("/order/{id:guid}",
-//    async (Guid id, [FromServices] IQuerySession session, CancellationToken ct) =>
-//    {
-//        return await session.Query<OrderModel>().Where(x => x.Id == id)
-//            .FirstOrDefaultAsync(ct);
-//    });
+        aggregate.Cancel();
+
+        await session.Events.WriteToAggregate<Order>(orderId, version, stream =>
+            stream.AppendMany(aggregate.GetUncommittedEvents()));
+
+        await session.SaveChangesAsync();
+    });
 
 app.MapGet("/order/{id:guid}",
-    async (Guid id, [FromServices] IQuerySession session, CancellationToken ct) =>
-    {
-        return await session.Json.FindByIdAsync<OrderModel>(id, ct);
-    });
-
+    async (Guid id, [FromServices] IQuerySession session, CancellationToken ct) 
+        => await session.Json.FindByIdAsync<OrderModel>(id, ct));
 
 app.Run();
 
@@ -162,6 +155,5 @@ public class UserMarten
     public Guid Id { get; set; }
     public required string Username { get; set; }
 }
-
 
 public record UserRequest(string Username);
