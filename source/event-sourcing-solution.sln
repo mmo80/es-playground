@@ -7,6 +7,13 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "WebApi", "WebApi\WebApi.csp
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SolutionItems", "SolutionItems", "{02A4FB55-ADA2-4FE2-8043-C256A9DB32DC}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "DevOps", "DevOps", "{98923279-E6B6-4406-8652-D3623BA8CF86}"
+	ProjectSection(SolutionItems) = preProject
+		devops\grafana\grafana-datasources.yaml = devops\grafana\grafana-datasources.yaml
+		devops\otel\otel-collector-config.yml = devops\otel\otel-collector-config.yml
+		devops\tempo\tempo.yaml = devops\tempo\tempo.yaml
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
