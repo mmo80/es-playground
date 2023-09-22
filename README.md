@@ -1,5 +1,7 @@
 # Event Sourcing Playground
-### Using:<br>
-Marven<br>
-OpenTelemetry<br>
-Docker<br>
+### Using:
+Postgres\
+Marven (Document and Event Store)\
+OpenTelemetry\
+Grafana with Grafana Tempo\
+Docker, Docker Compose
